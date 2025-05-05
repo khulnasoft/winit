@@ -20,8 +20,6 @@ mod window_property;
 mod wm;
 mod xmodmap;
 
-use x11rb::protocol::xproto::{self, ConnectionExt as _};
-
 pub use self::cursor::*;
 pub use self::geometry::*;
 pub use self::hint::*;
@@ -30,8 +28,10 @@ pub use self::mouse::*;
 pub use self::window_property::*;
 pub use self::wm::*;
 pub use self::xmodmap::ModifierKeymap;
+
 use super::atoms::*;
 use super::{ffi, VoidCookie, X11Error, XConnection, XError};
+use x11rb::protocol::xproto::{self, ConnectionExt as _};
 
 pub fn maybe_change<T: PartialEq>(field: &mut Option<T>, value: T) -> bool {
     let wrapped = Some(value);
@@ -51,7 +51,7 @@ where
 }
 
 impl XConnection {
-    // This is important, so pay attention!
+    // This is impoartant, so pay attention!
     // Xlib has an output buffer, and tries to hide the async nature of X from you.
     // This buffer contains the requests you make, and is flushed under various circumstances:
     // 1. `XPending`, `XNextEvent`, and `XWindowEvent` flush "as needed"

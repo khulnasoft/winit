@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use dpi::PhysicalPosition;
 use percent_encoding::percent_decode;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
@@ -39,7 +38,6 @@ impl From<io::Error> for DndDataParseError {
     }
 }
 
-#[derive(Debug)]
 pub struct Dnd {
     xconn: Arc<XConnection>,
     // Populated by XdndEnter event handler
@@ -47,25 +45,13 @@ pub struct Dnd {
     pub type_list: Option<Vec<xproto::Atom>>,
     // Populated by XdndPosition event handler
     pub source_window: Option<xproto::Window>,
-    // Populated by XdndPosition event handler
-    pub position: PhysicalPosition<f64>,
     // Populated by SelectionNotify event handler (triggered by XdndPosition event handler)
     pub result: Option<Result<Vec<PathBuf>, DndDataParseError>>,
-    // Populated by SelectionNotify event handler (triggered by XdndPosition event handler)
-    pub dragging: bool,
 }
 
 impl Dnd {
     pub fn new(xconn: Arc<XConnection>) -> Result<Self, X11Error> {
-        Ok(Dnd {
-            xconn,
-            version: None,
-            type_list: None,
-            source_window: None,
-            position: PhysicalPosition::default(),
-            result: None,
-            dragging: false,
-        })
+        Ok(Dnd { xconn, version: None, type_list: None, source_window: None, result: None })
     }
 
     pub fn reset(&mut self) {
@@ -73,7 +59,6 @@ impl Dnd {
         self.type_list = None;
         self.source_window = None;
         self.result = None;
-        self.dragging = false;
     }
 
     pub unsafe fn send_status(
@@ -88,13 +73,13 @@ impl Dnd {
             DndState::Rejected => (0, atoms[DndNone]),
         };
         self.xconn
-            .send_client_msg(target_window, target_window, atoms[XdndStatus] as _, None, [
-                this_window,
-                accepted,
-                0,
-                0,
-                action as _,
-            ])?
+            .send_client_msg(
+                target_window,
+                target_window,
+                atoms[XdndStatus] as _,
+                None,
+                [this_window, accepted, 0, 0, action as _],
+            )?
             .ignore_error();
 
         Ok(())
@@ -112,13 +97,13 @@ impl Dnd {
             DndState::Rejected => (0, atoms[DndNone]),
         };
         self.xconn
-            .send_client_msg(target_window, target_window, atoms[XdndFinished] as _, None, [
-                this_window,
-                accepted,
-                action as _,
-                0,
-                0,
-            ])?
+            .send_client_msg(
+                target_window,
+                target_window,
+                atoms[XdndFinished] as _,
+                None,
+                [this_window, accepted, action as _, 0, 0],
+            )?
             .ignore_error();
 
         Ok(())

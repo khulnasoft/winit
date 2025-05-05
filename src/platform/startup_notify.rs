@@ -23,10 +23,8 @@
 
 use std::env;
 
-use crate::error::{NotSupportedError, RequestError};
+use crate::error::NotSupportedError;
 use crate::event_loop::{ActiveEventLoop, AsyncRequestSerial};
-#[cfg(wayland_platform)]
-use crate::platform::wayland::ActiveEventLoopExtWayland;
 use crate::window::{ActivationToken, Window, WindowAttributes};
 
 /// The variable which is used mostly on X11.
@@ -46,7 +44,7 @@ pub trait WindowExtStartupNotify {
     /// Request a new activation token.
     ///
     /// The token will be delivered inside
-    fn request_activation_token(&self) -> Result<AsyncRequestSerial, RequestError>;
+    fn request_activation_token(&self) -> Result<AsyncRequestSerial, NotSupportedError>;
 }
 
 pub trait WindowAttributesExtStartupNotify {
@@ -57,34 +55,22 @@ pub trait WindowAttributesExtStartupNotify {
     fn with_activation_token(self, token: ActivationToken) -> Self;
 }
 
-impl EventLoopExtStartupNotify for dyn ActiveEventLoop + '_ {
+impl EventLoopExtStartupNotify for ActiveEventLoop {
     fn read_token_from_env(&self) -> Option<ActivationToken> {
-        #[cfg(x11_platform)]
-        let _is_wayland = false;
-        #[cfg(wayland_platform)]
-        let _is_wayland = self.is_wayland();
-
-        if _is_wayland {
-            env::var(WAYLAND_VAR).ok().map(ActivationToken::from_raw)
-        } else {
-            env::var(X11_VAR).ok().map(ActivationToken::from_raw)
+        match self.p {
+            #[cfg(wayland_platform)]
+            crate::platform_impl::ActiveEventLoop::Wayland(_) => env::var(WAYLAND_VAR),
+            #[cfg(x11_platform)]
+            crate::platform_impl::ActiveEventLoop::X(_) => env::var(X11_VAR),
         }
+        .ok()
+        .map(ActivationToken::_new)
     }
 }
 
-impl WindowExtStartupNotify for dyn Window + '_ {
-    fn request_activation_token(&self) -> Result<AsyncRequestSerial, RequestError> {
-        #[cfg(wayland_platform)]
-        if let Some(window) = self.cast_ref::<crate::platform_impl::wayland::Window>() {
-            return window.request_activation_token();
-        }
-
-        #[cfg(x11_platform)]
-        if let Some(window) = self.cast_ref::<crate::platform_impl::x11::window::Window>() {
-            return window.request_activation_token();
-        }
-
-        Err(NotSupportedError::new("startup notify is not supported").into())
+impl WindowExtStartupNotify for Window {
+    fn request_activation_token(&self) -> Result<AsyncRequestSerial, NotSupportedError> {
+        self.window.request_activation_token()
     }
 }
 
@@ -108,6 +94,6 @@ pub fn reset_activation_token_env() {
 ///
 /// This could be used before running daemon processes.
 pub fn set_activation_token_env(token: ActivationToken) {
-    env::set_var(X11_VAR, &token.token);
-    env::set_var(WAYLAND_VAR, token.token);
+    env::set_var(X11_VAR, &token._token);
+    env::set_var(WAYLAND_VAR, token._token);
 }

@@ -9,29 +9,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoop};
     use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
-    use winit::window::{Window, WindowAttributes, WindowId};
+    use winit::window::{Window, WindowId};
 
     #[path = "util/fill.rs"]
     mod fill;
 
-    #[derive(Default, Debug)]
+    #[derive(Default)]
     struct App {
         idx: usize,
         window_id: Option<WindowId>,
-        window: Option<Box<dyn Window>>,
+        window: Option<Window>,
     }
 
     impl ApplicationHandler for App {
-        fn about_to_wait(&mut self, _event_loop: &dyn ActiveEventLoop) {
+        fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
             if let Some(window) = self.window.as_ref() {
                 window.request_redraw();
             }
         }
 
-        fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-            let window_attributes = WindowAttributes::default()
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let window_attributes = Window::default_attributes()
                 .with_title("Fantastic window number one!")
-                .with_surface_size(winit::dpi::LogicalSize::new(128.0, 128.0));
+                .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0));
             let window = event_loop.create_window(window_attributes).unwrap();
             self.window_id = Some(window.id());
             self.window = Some(window);
@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         fn window_event(
             &mut self,
-            event_loop: &dyn ActiveEventLoop,
+            event_loop: &ActiveEventLoop,
             window_id: WindowId,
             event: WindowEvent,
         ) {
@@ -65,11 +65,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                          CloseRequested",
                         self.idx
                     );
-                    fill::cleanup_window(window.as_ref());
+                    fill::cleanup_window(window);
                     self.window = None;
                 },
                 WindowEvent::RedrawRequested => {
-                    fill::fill_window(window.as_ref());
+                    fill::fill_window(window);
                 },
                 _ => (),
             }

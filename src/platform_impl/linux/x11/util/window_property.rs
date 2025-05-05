@@ -3,6 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use bytemuck::{NoUninit, Pod};
+
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
 

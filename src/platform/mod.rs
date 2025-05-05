@@ -2,26 +2,25 @@
 //!
 //! Only the modules corresponding to the platform you're compiling to will be available.
 
-#[cfg(android_platform)]
+#[cfg(any(android_platform, docsrs))]
 pub mod android;
-#[cfg(ios_platform)]
+#[cfg(any(ios_platform, docsrs))]
 pub mod ios;
-#[cfg(macos_platform)]
+#[cfg(any(macos_platform, docsrs))]
 pub mod macos;
-#[cfg(orbital_platform)]
+#[cfg(any(orbital_platform, docsrs))]
 pub mod orbital;
-#[cfg(any(x11_platform, wayland_platform))]
+#[cfg(any(x11_platform, wayland_platform, docsrs))]
 pub mod startup_notify;
-#[cfg(wayland_platform)]
+#[cfg(any(wayland_platform, docsrs))]
 pub mod wayland;
-#[cfg(web_platform)]
+#[cfg(any(web_platform, docsrs))]
 pub mod web;
-#[cfg(windows_platform)]
+#[cfg(any(windows_platform, docsrs))]
 pub mod windows;
-#[cfg(x11_platform)]
+#[cfg(any(x11_platform, docsrs))]
 pub mod x11;
 
-#[allow(unused_imports)]
 #[cfg(any(
     windows_platform,
     macos_platform,
@@ -41,6 +40,16 @@ pub mod run_on_demand;
     docsrs,
 ))]
 pub mod pump_events;
+
+#[cfg(any(
+    windows_platform,
+    macos_platform,
+    x11_platform,
+    wayland_platform,
+    orbital_platform,
+    docsrs
+))]
+pub mod modifier_supplement;
 
 #[cfg(any(windows_platform, macos_platform, x11_platform, wayland_platform, docsrs))]
 pub mod scancode;

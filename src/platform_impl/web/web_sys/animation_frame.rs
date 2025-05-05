@@ -1,6 +1,5 @@
 use std::cell::Cell;
 use std::rc::Rc;
-
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 

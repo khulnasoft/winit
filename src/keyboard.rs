@@ -1,5 +1,4 @@
 //! Types related to the keyboard.
-#![cfg_attr(feature = "serde", allow(deprecated))] // https://github.com/serde-rs/serde/issues/2195
 
 // This file contains a substantial portion of the UI Events Specification by the W3C. In
 // particular, the variant names within `Key` and `KeyCode` and their documentation are modified
@@ -85,7 +84,7 @@ pub use smol_str::SmolStr;
 /// haven't mapped for you yet, this lets you use use [`KeyCode`] to:
 ///
 /// - Correctly match key press and release events.
-/// - On non-Web platforms, support assigning keybinds to virtually any key through a UI.
+/// - On non-web platforms, support assigning keybinds to virtually any key through a UI.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum NativeKeyCode {
@@ -284,7 +283,11 @@ impl PartialEq<PhysicalKey> for NativeKeyCode {
 
 /// Code representing the location of a physical key
 ///
-/// This conforms to the UI Events Specification's [`KeyboardEvent.code`].
+/// This mostly conforms to the UI Events Specification's [`KeyboardEvent.code`] with a few
+/// exceptions:
+/// - The keys that the specification calls "MetaLeft" and "MetaRight" are named "SuperLeft" and
+///   "SuperRight" here.
+/// - The key that the specification calls "Super" is reported as `Unidentified` here.
 ///
 /// [`KeyboardEvent.code`]: https://w3c.github.io/uievents-code/#code-value-tables
 #[non_exhaustive]
@@ -417,7 +420,7 @@ pub enum KeyCode {
     /// <kbd>CapsLock</kbd> or <kbd>⇪</kbd>
     CapsLock,
     /// The application context menu key, which is typically found between the right
-    /// <kbd>Meta</kbd> key and the right <kbd>Control</kbd> key.
+    /// <kbd>Super</kbd> key and the right <kbd>Control</kbd> key.
     ContextMenu,
     /// <kbd>Control</kbd> or <kbd>⌃</kbd>
     ControlLeft,
@@ -426,9 +429,9 @@ pub enum KeyCode {
     /// <kbd>Enter</kbd> or <kbd>↵</kbd>. Labeled <kbd>Return</kbd> on Apple keyboards.
     Enter,
     /// The Windows, <kbd>⌘</kbd>, <kbd>Command</kbd>, or other OS symbol key.
-    MetaLeft,
+    SuperLeft,
     /// The Windows, <kbd>⌘</kbd>, <kbd>Command</kbd>, or other OS symbol key.
-    MetaRight,
+    SuperRight,
     /// <kbd>Shift</kbd> or <kbd>⇧</kbd>
     ShiftLeft,
     /// <kbd>Shift</kbd> or <kbd>⇧</kbd>
@@ -610,11 +613,9 @@ pub enum KeyCode {
     AudioVolumeMute,
     AudioVolumeUp,
     WakeUp,
+    // Legacy modifier key. Also called "Super" in certain places.
+    Meta,
     // Legacy modifier key.
-    #[deprecated = "marked as legacy in the spec, use Meta instead"]
-    Super,
-    // Legacy modifier key.
-    #[deprecated = "marked as legacy in the spec, use Meta instead"]
     Hyper,
     Turbo,
     Abort,
@@ -740,7 +741,12 @@ pub enum KeyCode {
 
 /// A [`Key::Named`] value
 ///
-/// This conforms to the UI Events Specification's [`KeyboardEvent.key`].
+/// This mostly conforms to the UI Events Specification's [`KeyboardEvent.key`] with a few
+/// exceptions:
+/// - The `Super` variant here, is named `Meta` in the aforementioned specification. (There's
+///   another key which the specification calls `Super`. That does not exist here.)
+/// - The `Space` variant here, can be identified by the character it generates in the
+///   specification.
 ///
 /// [`KeyboardEvent.key`]: https://w3c.github.io/uievents-key/
 #[non_exhaustive]
@@ -785,22 +791,24 @@ pub enum NamedKey {
     /// The Symbol modifier key (used on some virtual keyboards).
     Symbol,
     SymbolLock,
+    // Legacy modifier key. Also called "Super" in certain places.
+    Meta,
     // Legacy modifier key.
-    #[deprecated = "marked as legacy in the spec, use Meta instead"]
-    Super,
-    // Legacy modifier key.
-    #[deprecated = "marked as legacy in the spec, use Meta instead"]
     Hyper,
-    /// Used to enable "meta" modifier function for interpreting concurrent or subsequent keyboard
+    /// Used to enable "super" modifier function for interpreting concurrent or subsequent keyboard
     /// input. This key value is used for the "Windows Logo" key and the Apple `Command` or `⌘`
     /// key.
-    Meta,
+    ///
+    /// Note: In some contexts (e.g. the Web) this is referred to as the "Meta" key.
+    Super,
     /// The `Enter` or `↵` key. Used to activate current selection or accept current input. This
     /// key value is also used for the `Return` (Macintosh numpad) key. This key value is also
     /// used for the Android `KEYCODE_DPAD_CENTER`.
     Enter,
     /// The Horizontal Tabulation `Tab` key.
     Tab,
+    /// Used in text to insert a space between words. Usually located below the character keys.
+    Space,
     /// Navigate or traverse downward. (`KEYCODE_DPAD_DOWN`)
     ArrowDown,
     /// Navigate or traverse leftward. (`KEYCODE_DPAD_LEFT`)
@@ -856,7 +864,7 @@ pub enum NamedKey {
     Attn,
     Cancel,
     /// Show the application’s context menu.
-    /// This key is commonly found between the right `Meta` key and the right `Control` key.
+    /// This key is commonly found between the right `Super` key and the right `Control` key.
     ContextMenu,
     /// The `Esc` key. This key was originally used to initiate an escape sequence, but is
     /// now more generally used to exit or "escape" the current context, such as closing a dialog
@@ -1224,7 +1232,7 @@ pub enum NamedKey {
     Dimmer,
     /// Swap video sources. (`VK_DISPLAY_SWAP`)
     DisplaySwap,
-    /// Select Digital Video Recorder. (`KEYCODE_DVR`)
+    /// Select Digital Video Rrecorder. (`KEYCODE_DVR`)
     DVR,
     /// Exit the current application. (`VK_EXIT`)
     Exit,
@@ -1560,21 +1568,17 @@ impl NamedKey {
     /// # Examples
     ///
     /// ```
-    /// # #[cfg(web_platform)]
-    /// # wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-    /// # #[cfg_attr(web_platform, wasm_bindgen_test::wasm_bindgen_test)]
-    /// # fn main() {
     /// use winit::keyboard::NamedKey;
     ///
     /// assert_eq!(NamedKey::Enter.to_text(), Some("\r"));
     /// assert_eq!(NamedKey::F20.to_text(), None);
-    /// # }
     /// ```
     pub fn to_text(&self) -> Option<&str> {
         match self {
             NamedKey::Enter => Some("\r"),
             NamedKey::Backspace => Some("\x08"),
             NamedKey::Tab => Some("\t"),
+            NamedKey::Space => Some(" "),
             NamedKey::Escape => Some("\x1b"),
             _ => None,
         }
@@ -1587,16 +1591,11 @@ impl Key {
     /// # Examples
     ///
     /// ```
-    /// # #[cfg(web_platform)]
-    /// # wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-    /// # #[cfg_attr(web_platform, wasm_bindgen_test::wasm_bindgen_test)]
-    /// # fn main() {
     /// use winit::keyboard::{Key, NamedKey};
     ///
     /// assert_eq!(Key::Character("a".into()).to_text(), Some("a"));
     /// assert_eq!(Key::Named(NamedKey::Enter).to_text(), Some("\r"));
     /// assert_eq!(Key::Named(NamedKey::F20).to_text(), None);
-    /// # }
     /// ```
     pub fn to_text(&self) -> Option<&str> {
         match self {
@@ -1619,7 +1618,7 @@ impl Key {
 ///
 /// [`location`]: ../event/struct.KeyEvent.html#structfield.location
 /// [`KeyEvent`]: crate::event::KeyEvent
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum KeyLocation {
     /// The key is in its "normal" location on the keyboard.
@@ -1691,7 +1690,6 @@ bitflags! {
     ///
     /// Each flag represents a modifier and is set if this modifier is active.
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct ModifiersState: u32 {
         /// The "shift" key.
         const SHIFT = 0b100;
@@ -1700,9 +1698,7 @@ bitflags! {
         /// The "alt" key.
         const ALT = 0b100 << 6;
         /// This is the "windows" key on PC and "command" key on Mac.
-        const META = 0b100 << 9;
-        #[deprecated = "use META instead"]
-        const SUPER = Self::META.bits();
+        const SUPER = 0b100 << 9;
     }
 }
 
@@ -1722,15 +1718,14 @@ impl ModifiersState {
         self.intersects(Self::ALT)
     }
 
-    /// Returns `true` if the meta key is pressed.
-    pub fn meta_key(&self) -> bool {
-        self.intersects(Self::META)
+    /// Returns `true` if the super key is pressed.
+    pub fn super_key(&self) -> bool {
+        self.intersects(Self::SUPER)
     }
 }
 
 /// The state of the particular modifiers key.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModifiersKeyState {
     /// The particular key is pressed.
     Pressed,
@@ -1749,7 +1744,6 @@ pub enum ModifiersKeyState {
 // on macOS due to their AltGr/Option situation.
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub(crate) struct ModifiersKeys: u8 {
         const LSHIFT   = 0b0000_0001;
         const RSHIFT   = 0b0000_0010;
@@ -1757,11 +1751,54 @@ bitflags! {
         const RCONTROL = 0b0000_1000;
         const LALT     = 0b0001_0000;
         const RALT     = 0b0010_0000;
-        const LMETA    = 0b0100_0000;
-        const RMETA    = 0b1000_0000;
-        #[deprecated = "use LMETA instead"]
-        const LSUPER   = Self::LMETA.bits();
-        #[deprecated = "use RMETA instead"]
-        const RSUPER   = Self::RMETA.bits();
+        const LSUPER   = 0b0100_0000;
+        const RSUPER   = 0b1000_0000;
+    }
+}
+
+#[cfg(feature = "serde")]
+mod modifiers_serde {
+    use super::ModifiersState;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Default, Serialize, Deserialize)]
+    #[serde(default)]
+    #[serde(rename = "ModifiersState")]
+    pub struct ModifiersStateSerialize {
+        pub shift_key: bool,
+        pub control_key: bool,
+        pub alt_key: bool,
+        pub super_key: bool,
+    }
+
+    impl Serialize for ModifiersState {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let s = ModifiersStateSerialize {
+                shift_key: self.shift_key(),
+                control_key: self.control_key(),
+                alt_key: self.alt_key(),
+                super_key: self.super_key(),
+            };
+            s.serialize(serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for ModifiersState {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let ModifiersStateSerialize { shift_key, control_key, alt_key, super_key } =
+                ModifiersStateSerialize::deserialize(deserializer)?;
+            let mut m = ModifiersState::empty();
+            m.set(ModifiersState::SHIFT, shift_key);
+            m.set(ModifiersState::CONTROL, control_key);
+            m.set(ModifiersState::ALT, alt_key);
+            m.set(ModifiersState::SUPER, super_key);
+            Ok(m)
+        }
     }
 }

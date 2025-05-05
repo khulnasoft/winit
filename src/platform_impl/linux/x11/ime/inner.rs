@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::mem;
 use std::sync::Arc;
 
+use super::{ffi, XConnection, XError};
+
 use super::context::ImeContext;
 use super::input_method::{InputMethod, PotentialInputMethods};
-use super::{ffi, XConnection, XError};
 use crate::platform_impl::platform::x11::ime::ImeEventSender;
 
 pub(crate) unsafe fn close_im(xconn: &Arc<XConnection>, im: ffi::XIM) -> Result<(), XError> {

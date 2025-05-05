@@ -1,6 +1,6 @@
-use web_time::Instant;
-
 use super::backend;
+
+use web_time::Instant;
 
 #[derive(Debug)]
 pub enum State {

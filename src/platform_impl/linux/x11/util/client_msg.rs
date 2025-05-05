@@ -1,6 +1,5 @@
-use x11rb::x11_utils::Serialize;
-
 use super::*;
+use x11rb::x11_utils::Serialize;
 
 impl XConnection {
     pub fn send_client_msg(

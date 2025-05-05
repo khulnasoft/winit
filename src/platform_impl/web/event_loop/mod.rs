@@ -1,43 +1,60 @@
-use super::{backend, HasMonitorPermissionFuture, MonitorPermissionFuture};
-use crate::application::ApplicationHandler;
-use crate::error::{EventLoopError, NotSupportedError};
+use std::marker::PhantomData;
+use std::sync::mpsc::{self, Receiver, Sender};
+
+use crate::error::EventLoopError;
+use crate::event::Event;
 use crate::event_loop::ActiveEventLoop as RootActiveEventLoop;
-use crate::platform::web::{PollStrategy, WaitUntilStrategy};
+
+use super::{backend, device, window};
 
 mod proxy;
 pub(crate) mod runner;
 mod state;
 mod window_target;
 
-pub(crate) use window_target::ActiveEventLoop;
+pub(crate) use proxy::EventLoopProxy;
+pub(crate) use window_target::{ActiveEventLoop, OwnedDisplayHandle};
 
-#[derive(Debug)]
-pub struct EventLoop {
-    elw: ActiveEventLoop,
+pub struct EventLoop<T: 'static> {
+    elw: RootActiveEventLoop,
+    user_event_sender: Sender<T>,
+    user_event_receiver: Receiver<T>,
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct PlatformSpecificEventLoopAttributes {}
 
-impl EventLoop {
+impl<T> EventLoop<T> {
     pub(crate) fn new(_: &PlatformSpecificEventLoopAttributes) -> Result<Self, EventLoopError> {
-        Ok(EventLoop { elw: ActiveEventLoop::new() })
+        let (user_event_sender, user_event_receiver) = mpsc::channel();
+        let elw = RootActiveEventLoop { p: ActiveEventLoop::new(), _marker: PhantomData };
+        Ok(EventLoop { elw, user_event_sender, user_event_receiver })
     }
 
-    pub fn run_app<A: ApplicationHandler>(self, app: A) -> ! {
-        let app = Box::new(app);
+    pub fn run<F>(self, mut event_handler: F) -> !
+    where
+        F: FnMut(Event<T>, &RootActiveEventLoop),
+    {
+        let target = RootActiveEventLoop { p: self.elw.p.clone(), _marker: PhantomData };
 
+        // SAFETY: Don't use `move` to make sure we leak the `event_handler` and `target`.
+        let handler: Box<dyn FnMut(Event<()>)> = Box::new(|event| {
+            let event = match event.map_nonuser_event() {
+                Ok(event) => event,
+                Err(Event::UserEvent(())) => Event::UserEvent(
+                    self.user_event_receiver
+                        .try_recv()
+                        .expect("handler woken up without user event"),
+                ),
+                Err(_) => unreachable!(),
+            };
+            event_handler(event, &target)
+        });
         // SAFETY: The `transmute` is necessary because `run()` requires `'static`. This is safe
         // because this function will never return and all resources not cleaned up by the point we
         // `throw` will leak, making this actually `'static`.
-        let app = unsafe {
-            std::mem::transmute::<
-                Box<dyn ApplicationHandler + '_>,
-                Box<dyn ApplicationHandler + 'static>,
-            >(app)
-        };
-
-        self.elw.run(app, false);
+        let handler = unsafe { std::mem::transmute(handler) };
+        self.elw.p.run(handler, false);
 
         // Throw an exception to break out of Rust execution and use unreachable to tell the
         // compiler this function won't return, giving it a return type of '!'
@@ -48,39 +65,34 @@ impl EventLoop {
         unreachable!();
     }
 
-    pub fn spawn_app<A: ApplicationHandler + 'static>(self, app: A) {
-        self.elw.run(Box::new(app), true);
+    pub fn spawn<F>(self, mut event_handler: F)
+    where
+        F: 'static + FnMut(Event<T>, &RootActiveEventLoop),
+    {
+        let target = RootActiveEventLoop { p: self.elw.p.clone(), _marker: PhantomData };
+
+        self.elw.p.run(
+            Box::new(move |event| {
+                let event = match event.map_nonuser_event() {
+                    Ok(event) => event,
+                    Err(Event::UserEvent(())) => Event::UserEvent(
+                        self.user_event_receiver
+                            .try_recv()
+                            .expect("handler woken up without user event"),
+                    ),
+                    Err(_) => unreachable!(),
+                };
+                event_handler(event, &target)
+            }),
+            true,
+        );
     }
 
-    pub fn window_target(&self) -> &dyn RootActiveEventLoop {
+    pub fn create_proxy(&self) -> EventLoopProxy<T> {
+        EventLoopProxy::new(self.elw.p.waker(), self.user_event_sender.clone())
+    }
+
+    pub fn window_target(&self) -> &RootActiveEventLoop {
         &self.elw
-    }
-
-    pub fn set_poll_strategy(&self, strategy: PollStrategy) {
-        self.elw.set_poll_strategy(strategy);
-    }
-
-    pub fn poll_strategy(&self) -> PollStrategy {
-        self.elw.poll_strategy()
-    }
-
-    pub fn set_wait_until_strategy(&self, strategy: WaitUntilStrategy) {
-        self.elw.set_wait_until_strategy(strategy);
-    }
-
-    pub fn wait_until_strategy(&self) -> WaitUntilStrategy {
-        self.elw.wait_until_strategy()
-    }
-
-    pub fn has_multiple_screens(&self) -> Result<bool, NotSupportedError> {
-        self.elw.has_multiple_screens()
-    }
-
-    pub(crate) fn request_detailed_monitor_permission(&self) -> MonitorPermissionFuture {
-        self.elw.request_detailed_monitor_permission()
-    }
-
-    pub fn has_detailed_monitor_permission(&self) -> HasMonitorPermissionFuture {
-        self.elw.runner.monitor().has_detailed_monitor_permission_async()
     }
 }

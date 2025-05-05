@@ -1,6 +1,3 @@
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-
 use js_sys::{Array, Object};
 use tracing::warn;
 use wasm_bindgen::prelude::{wasm_bindgen, Closure};
@@ -10,12 +7,16 @@ use web_sys::{
     ResizeObserverEntry, ResizeObserverOptions, ResizeObserverSize, Window,
 };
 
+use crate::dpi::{LogicalSize, PhysicalSize};
+
 use super::super::backend;
 use super::canvas::Style;
 use super::media_query_handle::MediaQueryListHandle;
-use crate::dpi::{LogicalSize, PhysicalSize};
 
-pub struct ResizeScaleHandle(Rc<ResizeScaleInternal>);
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+pub struct ResizeScaleHandle(Rc<RefCell<ResizeScaleInternal>>);
 
 impl ResizeScaleHandle {
     pub(crate) fn new<S, R>(
@@ -27,8 +28,8 @@ impl ResizeScaleHandle {
         resize_handler: R,
     ) -> Self
     where
-        S: 'static + Fn(PhysicalSize<u32>, f64),
-        R: 'static + Fn(PhysicalSize<u32>),
+        S: 'static + FnMut(PhysicalSize<u32>, f64),
+        R: 'static + FnMut(PhysicalSize<u32>),
     {
         Self(ResizeScaleInternal::new(
             window,
@@ -41,7 +42,7 @@ impl ResizeScaleHandle {
     }
 
     pub(crate) fn notify_resize(&self) {
-        self.0.notify()
+        self.0.borrow_mut().notify()
     }
 }
 
@@ -52,11 +53,11 @@ struct ResizeScaleInternal {
     document: Document,
     canvas: HtmlCanvasElement,
     style: Style,
-    mql: RefCell<MediaQueryListHandle>,
+    mql: MediaQueryListHandle,
     observer: ResizeObserver,
     _observer_closure: Closure<dyn FnMut(Array, ResizeObserver)>,
-    scale_handler: Box<dyn Fn(PhysicalSize<u32>, f64)>,
-    resize_handler: Box<dyn Fn(PhysicalSize<u32>)>,
+    scale_handler: Box<dyn FnMut(PhysicalSize<u32>, f64)>,
+    resize_handler: Box<dyn FnMut(PhysicalSize<u32>)>,
     notify_scale: Cell<bool>,
 }
 
@@ -68,12 +69,12 @@ impl ResizeScaleInternal {
         style: Style,
         scale_handler: S,
         resize_handler: R,
-    ) -> Rc<Self>
+    ) -> Rc<RefCell<Self>>
     where
-        S: 'static + Fn(PhysicalSize<u32>, f64),
-        R: 'static + Fn(PhysicalSize<u32>),
+        S: 'static + FnMut(PhysicalSize<u32>, f64),
+        R: 'static + FnMut(PhysicalSize<u32>),
     {
-        Rc::<ResizeScaleInternal>::new_cyclic(|weak_self| {
+        Rc::<RefCell<ResizeScaleInternal>>::new_cyclic(|weak_self| {
             let mql = Self::create_mql(&window, {
                 let weak_self = weak_self.clone();
                 move |mql| {
@@ -85,7 +86,9 @@ impl ResizeScaleInternal {
 
             let weak_self = weak_self.clone();
             let observer_closure = Closure::new(move |entries: Array, _| {
-                if let Some(this) = weak_self.upgrade() {
+                if let Some(rc_self) = weak_self.upgrade() {
+                    let mut this = rc_self.borrow_mut();
+
                     let size = this.process_entry(entries);
 
                     if this.notify_scale.replace(false) {
@@ -98,18 +101,18 @@ impl ResizeScaleInternal {
             });
             let observer = Self::create_observer(&canvas, observer_closure.as_ref());
 
-            Self {
+            RefCell::new(Self {
                 window,
                 document,
                 canvas,
                 style,
-                mql: RefCell::new(mql),
+                mql,
                 observer,
                 _observer_closure: observer_closure,
                 scale_handler: Box::new(scale_handler),
                 resize_handler: Box::new(resize_handler),
                 notify_scale: Cell::new(false),
-            }
+            })
         })
     }
 
@@ -124,11 +127,14 @@ impl ResizeScaleInternal {
              (-webkit-device-pixel-ratio: {current_scale})",
         );
         let mql = MediaQueryListHandle::new(window, &media_query, closure);
-        debug_assert!(
-            mql.mql().matches(),
-            "created media query doesn't match, {current_scale} != {}",
-            super::scale_factor(window)
-        );
+        // TODO(PLAT-806): There's a winit/browser bug that causes this debug_assert
+        // to trigger when the print dialog is open. To prevent debug builds from
+        // panicking, we disable the debug_assert for now.
+        // debug_assert!(
+        //     mql.mql().matches(),
+        //     "created media query doesn't match, {current_scale} != {}",
+        //     super::scale_factor(window)
+        // );
         mql
     }
 
@@ -138,9 +144,10 @@ impl ResizeScaleInternal {
 
         // Safari doesn't support `devicePixelContentBoxSize`
         if has_device_pixel_support() {
-            let options = ResizeObserverOptions::new();
-            options.set_box(ResizeObserverBoxOptions::DevicePixelContentBox);
-            observer.observe_with_options(canvas, &options);
+            observer.observe_with_options(
+                canvas,
+                ResizeObserverOptions::new().box_(ResizeObserverBoxOptions::DevicePixelContentBox),
+            );
         } else {
             observer.observe(canvas);
         }
@@ -148,7 +155,7 @@ impl ResizeScaleInternal {
         observer
     }
 
-    fn notify(&self) {
+    fn notify(&mut self) {
         if !self.document.contains(Some(&self.canvas)) || self.style.get("display") == "none" {
             let size = PhysicalSize::new(0, 0);
 
@@ -196,9 +203,10 @@ impl ResizeScaleInternal {
         }
     }
 
-    fn handle_scale(self: Rc<Self>, mql: &MediaQueryList) {
-        let weak_self = Rc::downgrade(&self);
-        let scale = super::scale_factor(&self.window);
+    fn handle_scale(this: Rc<RefCell<Self>>, mql: &MediaQueryList) {
+        let weak_self = Rc::downgrade(&this);
+        let mut this = this.borrow_mut();
+        let scale = super::scale_factor(&this.window);
 
         // TODO: confirm/reproduce this problem, see:
         // <https://github.com/rust-windowing/winit/issues/2597>.
@@ -212,15 +220,15 @@ impl ResizeScaleInternal {
             return;
         }
 
-        let new_mql = Self::create_mql(&self.window, move |mql| {
+        let new_mql = Self::create_mql(&this.window, move |mql| {
             if let Some(rc_self) = weak_self.upgrade() {
                 Self::handle_scale(rc_self, mql);
             }
         });
-        self.mql.replace(new_mql);
+        this.mql = new_mql;
 
-        self.notify_scale.set(true);
-        self.notify();
+        this.notify_scale.set(true);
+        this.notify();
     }
 
     fn process_entry(&self, entries: Array) -> PhysicalSize<u32> {

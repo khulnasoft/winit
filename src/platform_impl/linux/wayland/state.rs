@@ -3,14 +3,16 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use ahash::AHashMap;
-use sctk::compositor::{CompositorHandler, CompositorState};
-use sctk::output::{OutputHandler, OutputState};
+
 use sctk::reexports::calloop::LoopHandle;
 use sctk::reexports::client::backend::ObjectId;
 use sctk::reexports::client::globals::GlobalList;
 use sctk::reexports::client::protocol::wl_output::WlOutput;
 use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use sctk::reexports::client::{Connection, Proxy, QueueHandle};
+
+use sctk::compositor::{CompositorHandler, CompositorState};
+use sctk::output::{OutputHandler, OutputState};
 use sctk::registry::{ProvidesRegistryState, RegistryState};
 use sctk::seat::pointer::ThemedPointer;
 use sctk::seat::SeatState;
@@ -21,7 +23,6 @@ use sctk::shm::slot::SlotPool;
 use sctk::shm::{Shm, ShmHandler};
 use sctk::subcompositor::SubcompositorState;
 
-use crate::error::OsError;
 use crate::platform_impl::wayland::event_loop::sink::EventSink;
 use crate::platform_impl::wayland::output::MonitorHandle;
 use crate::platform_impl::wayland::seat::{
@@ -33,10 +34,10 @@ use crate::platform_impl::wayland::types::wp_fractional_scaling::FractionalScali
 use crate::platform_impl::wayland::types::wp_viewporter::ViewporterState;
 use crate::platform_impl::wayland::types::xdg_activation::XdgActivationState;
 use crate::platform_impl::wayland::window::{WindowRequests, WindowState};
-use crate::platform_impl::wayland::WindowId;
+use crate::platform_impl::wayland::{WaylandError, WindowId};
+use crate::platform_impl::OsError;
 
 /// Winit's Wayland state.
-#[derive(Debug)]
 pub struct WinitState {
     /// The WlRegistry.
     pub registry_state: RegistryState,
@@ -114,9 +115,6 @@ pub struct WinitState {
     /// Whether we have dispatched events to the user thus we want to
     /// send `AboutToWait` and normally wakeup the user.
     pub dispatched_events: bool,
-
-    /// Whether the user initiated a wake up.
-    pub proxy_wake_up: bool,
 }
 
 impl WinitState {
@@ -127,7 +125,7 @@ impl WinitState {
     ) -> Result<Self, OsError> {
         let registry_state = RegistryState::new(globals);
         let compositor_state =
-            CompositorState::bind(globals, queue_handle).map_err(|err| os_error!(err))?;
+            CompositorState::bind(globals, queue_handle).map_err(WaylandError::Bind)?;
         let subcompositor_state = match SubcompositorState::bind(
             compositor_state.wl_compositor().clone(),
             globals,
@@ -157,7 +155,7 @@ impl WinitState {
                 (None, None)
             };
 
-        let shm = Shm::bind(globals, queue_handle).map_err(|err| os_error!(err))?;
+        let shm = Shm::bind(globals, queue_handle).map_err(WaylandError::Bind)?;
         let custom_cursor_pool = Arc::new(Mutex::new(SlotPool::new(2, &shm).unwrap()));
 
         Ok(Self {
@@ -169,7 +167,7 @@ impl WinitState {
             shm,
             custom_cursor_pool,
 
-            xdg_shell: XdgShell::bind(globals, queue_handle).map_err(|err| os_error!(err))?,
+            xdg_shell: XdgShell::bind(globals, queue_handle).map_err(WaylandError::Bind)?,
             xdg_activation: XdgActivationState::bind(globals, queue_handle).ok(),
 
             windows: Default::default(),
@@ -194,7 +192,6 @@ impl WinitState {
             loop_handle,
             // Make it true by default.
             dispatched_events: true,
-            proxy_wake_up: false,
         })
     }
 
@@ -342,28 +339,10 @@ impl CompositorHandler for WinitState {
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &WlSurface,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
         _: wayland_client::protocol::wl_output::Transform,
     ) {
         // TODO(kchibisov) we need to expose it somehow in winit.
-    }
-
-    fn surface_enter(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &WlSurface,
-        _: &WlOutput,
-    ) {
-    }
-
-    fn surface_leave(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &WlSurface,
-        _: &WlOutput,
-    ) {
     }
 
     fn scale_factor_changed(

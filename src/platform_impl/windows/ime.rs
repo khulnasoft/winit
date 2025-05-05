@@ -3,11 +3,12 @@ use std::os::windows::prelude::OsStringExt;
 use std::ptr::null_mut;
 
 use windows_sys::Win32::Foundation::{POINT, RECT};
+use windows_sys::Win32::Globalization::HIMC;
 use windows_sys::Win32::UI::Input::Ime::{
     ImmAssociateContextEx, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
     ImmSetCandidateWindow, ImmSetCompositionWindow, ATTR_TARGET_CONVERTED,
     ATTR_TARGET_NOTCONVERTED, CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM, GCS_COMPATTR,
-    GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, HIMC, IACE_CHILDREN, IACE_DEFAULT,
+    GCS_COMPSTR, GCS_CURSORPOS, GCS_RESULTSTR, IACE_CHILDREN, IACE_DEFAULT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_IMMENABLED};
 
@@ -34,13 +35,8 @@ impl ImeContext {
         let mut first = None;
         let mut last = None;
         let mut boundary_before_char = 0;
-        let mut attr_idx = 0;
 
-        for chr in text.chars() {
-            let Some(attr) = attrs.get(attr_idx).copied() else {
-                break;
-            };
-
+        for (attr, chr) in attrs.into_iter().zip(text.chars()) {
             let char_is_targeted =
                 attr as u32 == ATTR_TARGET_CONVERTED || attr as u32 == ATTR_TARGET_NOTCONVERTED;
 
@@ -51,7 +47,6 @@ impl ImeContext {
             }
 
             boundary_before_char += chr.len_utf8();
-            attr_idx += chr.len_utf16();
         }
 
         if first.is_some() && last.is_none() {
@@ -143,9 +138,9 @@ impl ImeContext {
         }
 
         if allowed {
-            unsafe { ImmAssociateContextEx(hwnd, null_mut(), IACE_DEFAULT) };
+            unsafe { ImmAssociateContextEx(hwnd, 0, IACE_DEFAULT) };
         } else {
-            unsafe { ImmAssociateContextEx(hwnd, null_mut(), IACE_CHILDREN) };
+            unsafe { ImmAssociateContextEx(hwnd, 0, IACE_CHILDREN) };
         }
     }
 
