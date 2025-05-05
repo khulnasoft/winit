@@ -11,25 +11,25 @@ fn main() -> std::process::ExitCode {
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoop};
     use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
-    use winit::window::{Window, WindowAttributes, WindowId};
+    use winit::window::{Window, WindowId};
 
     #[path = "util/fill.rs"]
     mod fill;
 
-    #[derive(Default, Debug)]
+    #[derive(Default)]
     struct PumpDemo {
-        window: Option<Box<dyn Window>>,
+        window: Option<Window>,
     }
 
     impl ApplicationHandler for PumpDemo {
-        fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-            let window_attributes = WindowAttributes::default().with_title("A fantastic window!");
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let window_attributes = Window::default_attributes().with_title("A fantastic window!");
             self.window = Some(event_loop.create_window(window_attributes).unwrap());
         }
 
         fn window_event(
             &mut self,
-            event_loop: &dyn ActiveEventLoop,
+            event_loop: &ActiveEventLoop,
             _window_id: WindowId,
             event: WindowEvent,
         ) {
@@ -43,7 +43,7 @@ fn main() -> std::process::ExitCode {
             match event {
                 WindowEvent::CloseRequested => event_loop.exit(),
                 WindowEvent::RedrawRequested => {
-                    fill::fill_window(window.as_ref());
+                    fill::fill_window(window);
                     window.request_redraw();
                 },
                 _ => (),

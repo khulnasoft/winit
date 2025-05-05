@@ -67,21 +67,16 @@ pub struct FrameExtentsHeuristic {
 }
 
 impl FrameExtentsHeuristic {
-    pub fn surface_position(&self) -> (i32, i32) {
+    pub fn inner_pos_to_outer(&self, x: i32, y: i32) -> (i32, i32) {
         use self::FrameExtentsHeuristicPath::*;
         if self.heuristic_path != UnsupportedBordered {
-            (self.frame_extents.left as i32, self.frame_extents.top as i32)
+            (x - self.frame_extents.left as i32, y - self.frame_extents.top as i32)
         } else {
-            (0, 0)
+            (x, y)
         }
     }
 
-    pub fn inner_pos_to_outer(&self, x: i32, y: i32) -> (i32, i32) {
-        let (left, top) = self.surface_position();
-        (x - left, y - top)
-    }
-
-    pub fn surface_size_to_outer(&self, width: u32, height: u32) -> (u32, u32) {
+    pub fn inner_size_to_outer(&self, width: u32, height: u32) -> (u32, u32) {
         (
             width.saturating_add(
                 self.frame_extents.left.saturating_add(self.frame_extents.right) as _
@@ -95,7 +90,7 @@ impl FrameExtentsHeuristic {
 
 impl XConnection {
     // This is adequate for inner_position
-    pub fn translate_coords_root(
+    pub fn translate_coords(
         &self,
         window: xproto::Window,
         root: xproto::Window,
@@ -103,20 +98,7 @@ impl XConnection {
         self.xcb_connection().translate_coordinates(window, root, 0, 0)?.reply().map_err(Into::into)
     }
 
-    pub fn translate_coords(
-        &self,
-        src_w: xproto::Window,
-        dst_w: xproto::Window,
-        src_x: i16,
-        src_y: i16,
-    ) -> Result<xproto::TranslateCoordinatesReply, X11Error> {
-        self.xcb_connection()
-            .translate_coordinates(src_w, dst_w, src_x, src_y)?
-            .reply()
-            .map_err(Into::into)
-    }
-
-    // This is adequate for surface_size
+    // This is adequate for inner_size
     pub fn get_geometry(
         &self,
         window: xproto::Window,
@@ -202,7 +184,7 @@ impl XConnection {
         // that, fullscreen windows often aren't nested.
         let (inner_y_rel_root, child) = {
             let coords = self
-                .translate_coords_root(window, root)
+                .translate_coords(window, root)
                 .expect("Failed to translate window coordinates");
             (coords.dst_y, coords.child)
         };

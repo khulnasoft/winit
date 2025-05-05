@@ -48,8 +48,6 @@ atom_manager! {
     _NET_WM_NAME,
     _NET_WM_PID,
     _NET_WM_PING,
-    _NET_WM_SYNC_REQUEST,
-    _NET_WM_SYNC_REQUEST_COUNTER,
     _NET_WM_STATE,
     _NET_WM_STATE_ABOVE,
     _NET_WM_STATE_BELOW,
@@ -114,7 +112,6 @@ impl Index<AtomName> for Atoms {
     }
 }
 
+pub(crate) use AtomName::*;
 // Make sure `None` is still defined.
 pub(crate) use core::option::Option::None;
-
-pub(crate) use AtomName::*;

@@ -3,7 +3,6 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Weak;
 
-use sctk::globals::GlobalData;
 use sctk::reexports::client::globals::{BindError, GlobalList};
 use sctk::reexports::client::protocol::wl_surface::WlSurface;
 use sctk::reexports::client::{delegate_dispatch, Connection, Dispatch, Proxy, QueueHandle};
@@ -12,11 +11,13 @@ use sctk::reexports::protocols::xdg::activation::v1::client::xdg_activation_toke
 };
 use sctk::reexports::protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
 
+use sctk::globals::GlobalData;
+
 use crate::event_loop::AsyncRequestSerial;
 use crate::platform_impl::wayland::state::WinitState;
-use crate::window::{ActivationToken, WindowId};
+use crate::platform_impl::WindowId;
+use crate::window::ActivationToken;
 
-#[derive(Debug)]
 pub struct XdgActivationState {
     xdg_activation: XdgActivationV1,
 }
@@ -79,7 +80,7 @@ impl Dispatch<XdgActivationTokenV1, XdgActivationTokenData, WinitState> for XdgA
                 state.events_sink.push_window_event(
                     crate::event::WindowEvent::ActivationTokenDone {
                         serial: *serial,
-                        token: ActivationToken::from_raw(token),
+                        token: ActivationToken::_new(token),
                     },
                     *window_id,
                 );

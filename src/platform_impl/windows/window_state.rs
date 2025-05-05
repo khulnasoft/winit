@@ -1,7 +1,11 @@
-use std::sync::MutexGuard;
-use std::{fmt, io, ptr};
-
+use crate::dpi::{PhysicalPosition, PhysicalSize, Size};
+use crate::icon::Icon;
+use crate::keyboard::ModifiersState;
+use crate::platform_impl::platform::{event_loop, util, Fullscreen, SelectedCursor};
+use crate::window::{Theme, WindowAttributes};
 use bitflags::bitflags;
+use std::io;
+use std::sync::MutexGuard;
 use windows_sys::Win32::Foundation::{HWND, RECT};
 use windows_sys::Win32::Graphics::Gdi::InvalidateRgn;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -16,15 +20,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SIZEBOX, WS_SYSMENU, WS_VISIBLE,
 };
 
-use crate::dpi::{PhysicalPosition, PhysicalSize, Size};
-use crate::icon::Icon;
-use crate::keyboard::ModifiersState;
-use crate::monitor::Fullscreen;
-use crate::platform_impl::platform::{event_loop, util, SelectedCursor};
-use crate::window::{Theme, WindowAttributes};
-
 /// Contains information about states and the window that the callback is going to use.
-#[derive(Debug)]
 pub(crate) struct WindowState {
     pub mouse: MouseProperties,
 
@@ -32,7 +28,7 @@ pub(crate) struct WindowState {
     pub min_size: Option<Size>,
     pub max_size: Option<Size>,
 
-    pub surface_resize_increments: Option<Size>,
+    pub resize_increments: Option<Size>,
 
     pub window_icon: Option<Icon>,
     pub taskbar_icon: Option<Icon>,
@@ -67,13 +63,7 @@ pub struct SavedWindow {
     pub placement: WINDOWPLACEMENT,
 }
 
-impl fmt::Debug for SavedWindow {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SavedWindow").finish_non_exhaustive()
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MouseProperties {
     pub(crate) selected_cursor: SelectedCursor,
     pub capture_count: u32,
@@ -87,7 +77,6 @@ bitflags! {
         const GRABBED   = 1 << 0;
         const HIDDEN    = 1 << 1;
         const IN_WINDOW = 1 << 2;
-        const LOCKED    = 1 << 3;
     }
 }
 bitflags! {
@@ -138,7 +127,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq)]
 pub enum ImeState {
     Disabled,
     Enabled,
@@ -160,10 +149,10 @@ impl WindowState {
                 last_position: None,
             },
 
-            min_size: attributes.min_surface_size,
-            max_size: attributes.max_surface_size,
+            min_size: attributes.min_inner_size,
+            max_size: attributes.max_inner_size,
 
-            surface_resize_increments: attributes.surface_resize_increments,
+            resize_increments: attributes.resize_increments,
 
             window_icon: attributes.window_icon.clone(),
             taskbar_icon: None,
@@ -365,26 +354,32 @@ impl WindowFlags {
                     0,
                     SWP_ASYNCWINDOWPOS | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
                 );
-                InvalidateRgn(window, ptr::null_mut(), false.into());
+                InvalidateRgn(window, 0, false.into());
             }
         }
 
         if diff.contains(WindowFlags::MAXIMIZED) || new.contains(WindowFlags::MAXIMIZED) {
             unsafe {
-                ShowWindow(window, match new.contains(WindowFlags::MAXIMIZED) {
-                    true => SW_MAXIMIZE,
-                    false => SW_RESTORE,
-                });
+                ShowWindow(
+                    window,
+                    match new.contains(WindowFlags::MAXIMIZED) {
+                        true => SW_MAXIMIZE,
+                        false => SW_RESTORE,
+                    },
+                );
             }
         }
 
         // Minimize operations should execute after maximize for proper window animations
         if diff.contains(WindowFlags::MINIMIZED) {
             unsafe {
-                ShowWindow(window, match new.contains(WindowFlags::MINIMIZED) {
-                    true => SW_MINIMIZE,
-                    false => SW_RESTORE,
-                });
+                ShowWindow(
+                    window,
+                    match new.contains(WindowFlags::MINIMIZED) {
+                        true => SW_MINIMIZE,
+                        false => SW_RESTORE,
+                    },
+                );
             }
 
             diff.remove(WindowFlags::MINIMIZED);
@@ -429,7 +424,7 @@ impl WindowFlags {
                 }
 
                 // Refresh the window frame
-                SetWindowPos(window, ptr::null_mut(), 0, 0, 0, 0, flags);
+                SetWindowPos(window, 0, 0, 0, 0, 0, flags);
                 SendMessageW(window, event_loop::SET_RETAIN_STATE_ON_SIZE_MSG_ID.get(), 0, 0);
             }
         }
@@ -447,7 +442,7 @@ impl WindowFlags {
             }
 
             util::win_to_err({
-                let b_menu = !GetMenu(hwnd).is_null();
+                let b_menu = GetMenu(hwnd) != 0;
                 if let (Some(get_dpi_for_window), Some(adjust_window_rect_ex_for_dpi)) =
                     (*util::GET_DPI_FOR_WINDOW, *util::ADJUST_WINDOW_RECT_EX_FOR_DPI)
                 {
@@ -477,14 +472,14 @@ impl WindowFlags {
             let (width, height): (u32, u32) = self.adjust_size(hwnd, size).into();
             SetWindowPos(
                 hwnd,
-                ptr::null_mut(),
+                0,
                 0,
                 0,
                 width as _,
                 height as _,
                 SWP_ASYNCWINDOWPOS | SWP_NOZORDER | SWP_NOREPOSITION | SWP_NOMOVE | SWP_NOACTIVATE,
             );
-            InvalidateRgn(hwnd, ptr::null_mut(), false.into());
+            InvalidateRgn(hwnd, 0, false.into());
         }
     }
 }
@@ -496,22 +491,7 @@ impl CursorFlags {
         if util::is_focused(window) {
             let cursor_clip = match self.contains(CursorFlags::GRABBED) {
                 true => {
-                    if self.contains(CursorFlags::LOCKED) {
-                        if let Ok(pos) = util::get_cursor_position() {
-                            Some(RECT {
-                                left: pos.x,
-                                right: pos.x + 1,
-                                top: pos.y,
-                                bottom: pos.y + 1,
-                            })
-                        } else {
-                            // If lock is applied while the cursor is not available, lock it to the
-                            // middle of the window.
-                            let cx = (client_rect.left + client_rect.right) / 2;
-                            let cy = (client_rect.top + client_rect.bottom) / 2;
-                            Some(RECT { left: cx, right: cx + 1, top: cy, bottom: cy + 1 })
-                        }
-                    } else if self.contains(CursorFlags::HIDDEN) {
+                    if self.contains(CursorFlags::HIDDEN) {
                         // Confine the cursor to the center of the window if the cursor is hidden.
                         // This avoids problems with the cursor activating
                         // the taskbar if the window borders or overlaps that.

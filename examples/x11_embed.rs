@@ -7,22 +7,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     use winit::event::WindowEvent;
     use winit::event_loop::{ActiveEventLoop, EventLoop};
     use winit::platform::x11::WindowAttributesExtX11;
-    use winit::window::{Window, WindowAttributes, WindowId};
+    use winit::window::{Window, WindowId};
 
     #[path = "util/fill.rs"]
     mod fill;
 
-    #[derive(Debug)]
     pub struct XEmbedDemo {
         parent_window_id: u32,
-        window: Option<Box<dyn Window>>,
+        window: Option<Window>,
     }
 
     impl ApplicationHandler for XEmbedDemo {
-        fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-            let window_attributes = WindowAttributes::default()
+        fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+            let window_attributes = Window::default_attributes()
                 .with_title("An embedded window!")
-                .with_surface_size(winit::dpi::LogicalSize::new(128.0, 128.0))
+                .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
                 .with_embed_parent_window(self.parent_window_id);
 
             self.window = Some(event_loop.create_window(window_attributes).unwrap());
@@ -30,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         fn window_event(
             &mut self,
-            event_loop: &dyn ActiveEventLoop,
+            event_loop: &ActiveEventLoop,
             _window_id: WindowId,
             event: WindowEvent,
         ) {
@@ -39,13 +38,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 WindowEvent::CloseRequested => event_loop.exit(),
                 WindowEvent::RedrawRequested => {
                     window.pre_present_notify();
-                    fill::fill_window(window.as_ref());
+                    fill::fill_window(window);
                 },
                 _ => (),
             }
         }
 
-        fn about_to_wait(&mut self, _event_loop: &dyn ActiveEventLoop) {
+        fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
             self.window.as_ref().unwrap().request_redraw();
         }
     }
@@ -59,7 +58,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
     let event_loop = EventLoop::new()?;
 
-    Ok(event_loop.run_app(XEmbedDemo { parent_window_id, window: None })?)
+    let mut app = XEmbedDemo { parent_window_id, window: None };
+    event_loop.run_app(&mut app).map_err(Into::into)
 }
 
 #[cfg(not(x11_platform))]

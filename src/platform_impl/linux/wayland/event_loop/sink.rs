@@ -2,15 +2,17 @@
 
 use std::vec::Drain;
 
-use super::Event;
-use crate::event::{DeviceEvent, WindowEvent};
-use crate::window::WindowId;
+use crate::event::{DeviceEvent, DeviceId as RootDeviceId, Event, WindowEvent};
+use crate::platform_impl::platform::DeviceId as PlatformDeviceId;
+use crate::window::WindowId as RootWindowId;
+
+use super::{DeviceId, WindowId};
 
 /// An event loop's sink to deliver events from the Wayland event callbacks
 /// to the winit's user.
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct EventSink {
-    pub(crate) window_events: Vec<Event>,
+    pub window_events: Vec<Event<()>>,
 }
 
 impl EventSink {
@@ -26,14 +28,17 @@ impl EventSink {
 
     /// Add new device event to a queue.
     #[inline]
-    pub fn push_device_event(&mut self, event: DeviceEvent) {
-        self.window_events.push(Event::DeviceEvent { event });
+    pub fn push_device_event(&mut self, event: DeviceEvent, device_id: DeviceId) {
+        self.window_events.push(Event::DeviceEvent {
+            event,
+            device_id: RootDeviceId(PlatformDeviceId::Wayland(device_id)),
+        });
     }
 
     /// Add new window event to a queue.
     #[inline]
     pub fn push_window_event(&mut self, event: WindowEvent, window_id: WindowId) {
-        self.window_events.push(Event::WindowEvent { event, window_id });
+        self.window_events.push(Event::WindowEvent { event, window_id: RootWindowId(window_id) });
     }
 
     #[inline]
@@ -42,7 +47,7 @@ impl EventSink {
     }
 
     #[inline]
-    pub(crate) fn drain(&mut self) -> Drain<'_, Event> {
+    pub fn drain(&mut self) -> Drain<'_, Event<()>> {
         self.window_events.drain(..)
     }
 }

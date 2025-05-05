@@ -3,15 +3,16 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
+
 use sctk::reexports::client::backend::ObjectId;
 use sctk::reexports::client::protocol::wl_seat::WlSeat;
 use sctk::reexports::client::protocol::wl_touch::WlTouch;
 use sctk::reexports::client::{Connection, Proxy, QueueHandle};
 use sctk::reexports::protocols::wp::relative_pointer::zv1::client::zwp_relative_pointer_v1::ZwpRelativePointerV1;
 use sctk::reexports::protocols::wp::text_input::zv3::client::zwp_text_input_v3::ZwpTextInputV3;
+
 use sctk::seat::pointer::{ThemeSpec, ThemedPointer};
 use sctk::seat::{Capability as SeatCapability, SeatHandler, SeatState};
-use tracing::warn;
 
 use crate::event::WindowEvent;
 use crate::keyboard::ModifiersState;
@@ -22,11 +23,12 @@ mod pointer;
 mod text_input;
 mod touch;
 
-use keyboard::{KeyboardData, KeyboardState};
 pub use pointer::relative_pointer::RelativePointerState;
 pub use pointer::{PointerConstraintsState, WinitPointerData, WinitPointerDataExt};
-use text_input::TextInputData;
 pub use text_input::{TextInputState, ZwpTextInputV3Ext};
+
+use keyboard::{KeyboardData, KeyboardState};
+use text_input::TextInputData;
 use touch::TouchPoint;
 
 #[derive(Debug, Default)]
@@ -39,9 +41,6 @@ pub struct WinitSeatState {
 
     /// The mapping from touched points to the surfaces they're present.
     touch_map: AHashMap<i32, TouchPoint>,
-
-    /// Id of the first touch event.
-    first_touch_id: Option<i32>,
 
     /// The text input bound on the seat.
     text_input: Option<Arc<ZwpTextInputV3>>,
@@ -77,13 +76,7 @@ impl SeatHandler for WinitState {
         seat: WlSeat,
         capability: SeatCapability,
     ) {
-        let seat_state = match self.seats.get_mut(&seat.id()) {
-            Some(seat_state) => seat_state,
-            None => {
-                warn!("Received wl_seat::new_capability for unknown seat");
-                return;
-            },
-        };
+        let seat_state = self.seats.get_mut(&seat.id()).unwrap();
 
         match capability {
             SeatCapability::Touch if seat_state.touch.is_none() => {
@@ -96,12 +89,8 @@ impl SeatHandler for WinitState {
             },
             SeatCapability::Pointer if seat_state.pointer.is_none() => {
                 let surface = self.compositor_state.create_surface(queue_handle);
-                let viewport = self
-                    .viewporter_state
-                    .as_ref()
-                    .map(|state| state.get_viewport(&surface, queue_handle));
                 let surface_id = surface.id();
-                let pointer_data = WinitPointerData::new(seat.clone(), viewport);
+                let pointer_data = WinitPointerData::new(seat.clone());
                 let themed_pointer = self
                     .seat_state
                     .get_pointer_with_theme_and_data(
@@ -150,13 +139,7 @@ impl SeatHandler for WinitState {
         seat: WlSeat,
         capability: SeatCapability,
     ) {
-        let seat_state = match self.seats.get_mut(&seat.id()) {
-            Some(seat_state) => seat_state,
-            None => {
-                warn!("Received wl_seat::remove_capability for unknown seat");
-                return;
-            },
-        };
+        let seat_state = self.seats.get_mut(&seat.id()).unwrap();
 
         if let Some(text_input) = seat_state.text_input.take() {
             text_input.destroy();

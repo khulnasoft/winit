@@ -1,8 +1,8 @@
-use std::sync::LazyLock;
 /// This is a simple implementation of support for Windows Dark Mode,
 /// which is inspired by the solution in https://github.com/ysc3839/win32-darkmode
 use std::{ffi::c_void, ptr};
 
+use crate::utils::Lazy;
 use windows_sys::core::PCSTR;
 use windows_sys::Win32::Foundation::{BOOL, HWND, NTSTATUS, S_OK};
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
@@ -11,10 +11,11 @@ use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTA};
 use windows_sys::Win32::UI::Controls::SetWindowTheme;
 use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoA, SPI_GETHIGHCONTRAST};
 
-use super::util;
 use crate::window::Theme;
 
-static WIN10_BUILD_VERSION: LazyLock<Option<u32>> = LazyLock::new(|| {
+use super::util;
+
+static WIN10_BUILD_VERSION: Lazy<Option<u32>> = Lazy::new(|| {
     type RtlGetVersion = unsafe extern "system" fn(*mut OSVERSIONINFOW) -> NTSTATUS;
     let handle = get_function!("ntdll.dll", RtlGetVersion);
 
@@ -42,7 +43,7 @@ static WIN10_BUILD_VERSION: LazyLock<Option<u32>> = LazyLock::new(|| {
     }
 });
 
-static DARK_MODE_SUPPORTED: LazyLock<bool> = LazyLock::new(|| {
+static DARK_MODE_SUPPORTED: Lazy<bool> = Lazy::new(|| {
     // We won't try to do anything for windows versions < 17763
     // (Windows 10 October 2018 update)
     match *WIN10_BUILD_VERSION {
@@ -51,9 +52,8 @@ static DARK_MODE_SUPPORTED: LazyLock<bool> = LazyLock::new(|| {
     }
 });
 
-static DARK_THEME_NAME: LazyLock<Vec<u16>> =
-    LazyLock::new(|| util::encode_wide("DarkMode_Explorer"));
-static LIGHT_THEME_NAME: LazyLock<Vec<u16>> = LazyLock::new(|| util::encode_wide(""));
+static DARK_THEME_NAME: Lazy<Vec<u16>> = Lazy::new(|| util::encode_wide("DarkMode_Explorer"));
+static LIGHT_THEME_NAME: Lazy<Vec<u16>> = Lazy::new(|| util::encode_wide(""));
 
 /// Attempt to set a theme on a window, if necessary.
 /// Returns the theme that was picked
@@ -100,8 +100,8 @@ fn set_dark_mode_for_window(hwnd: HWND, is_dark_mode: bool) -> bool {
         cbData: usize,
     }
 
-    static SET_WINDOW_COMPOSITION_ATTRIBUTE: LazyLock<Option<SetWindowCompositionAttribute>> =
-        LazyLock::new(|| get_function!("user32.dll", SetWindowCompositionAttribute));
+    static SET_WINDOW_COMPOSITION_ATTRIBUTE: Lazy<Option<SetWindowCompositionAttribute>> =
+        Lazy::new(|| get_function!("user32.dll", SetWindowCompositionAttribute));
 
     if let Some(set_window_composition_attribute) = *SET_WINDOW_COMPOSITION_ATTRIBUTE {
         unsafe {
@@ -123,26 +123,25 @@ fn set_dark_mode_for_window(hwnd: HWND, is_dark_mode: bool) -> bool {
     }
 }
 
-pub fn should_use_dark_mode() -> bool {
+fn should_use_dark_mode() -> bool {
     should_apps_use_dark_mode() && !is_high_contrast()
 }
 
 fn should_apps_use_dark_mode() -> bool {
     type ShouldAppsUseDarkMode = unsafe extern "system" fn() -> bool;
-    static SHOULD_APPS_USE_DARK_MODE: LazyLock<Option<ShouldAppsUseDarkMode>> =
-        LazyLock::new(|| unsafe {
-            const UXTHEME_SHOULDAPPSUSEDARKMODE_ORDINAL: PCSTR = 132 as PCSTR;
+    static SHOULD_APPS_USE_DARK_MODE: Lazy<Option<ShouldAppsUseDarkMode>> = Lazy::new(|| unsafe {
+        const UXTHEME_SHOULDAPPSUSEDARKMODE_ORDINAL: PCSTR = 132 as PCSTR;
 
-            let module = LoadLibraryA(c"uxtheme.dll".as_ptr().cast());
+        let module = LoadLibraryA("uxtheme.dll\0".as_ptr());
 
-            if module.is_null() {
-                return None;
-            }
+        if module == 0 {
+            return None;
+        }
 
-            let handle = GetProcAddress(module, UXTHEME_SHOULDAPPSUSEDARKMODE_ORDINAL);
+        let handle = GetProcAddress(module, UXTHEME_SHOULDAPPSUSEDARKMODE_ORDINAL);
 
-            handle.map(|handle| std::mem::transmute(handle))
-        });
+        handle.map(|handle| std::mem::transmute(handle))
+    });
 
     SHOULD_APPS_USE_DARK_MODE
         .map(|should_apps_use_dark_mode| unsafe { (should_apps_use_dark_mode)() })

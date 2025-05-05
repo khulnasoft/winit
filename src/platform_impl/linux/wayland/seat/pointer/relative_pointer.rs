@@ -16,7 +16,6 @@ use crate::event::DeviceEvent;
 use crate::platform_impl::wayland::state::WinitState;
 
 /// Wrapper around the relative pointer.
-#[derive(Debug)]
 pub struct RelativePointerState {
     manager: ZwpRelativePointerManagerV1,
 }
@@ -69,7 +68,14 @@ impl Dispatch<ZwpRelativePointerV1, GlobalData, WinitState> for RelativePointerS
         };
         state
             .events_sink
-            .push_device_event(DeviceEvent::PointerMotion { delta: (dx_unaccel, dy_unaccel) });
+            .push_device_event(DeviceEvent::Motion { axis: 0, value: dx_unaccel }, super::DeviceId);
+        state
+            .events_sink
+            .push_device_event(DeviceEvent::Motion { axis: 1, value: dy_unaccel }, super::DeviceId);
+        state.events_sink.push_device_event(
+            DeviceEvent::MouseMotion { delta: (dx_unaccel, dy_unaccel) },
+            super::DeviceId,
+        );
     }
 }
 

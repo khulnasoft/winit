@@ -6,13 +6,14 @@ use std::ptr::{self, NonNull};
 
 #[cfg(x11_platform)]
 use x11_dl::xlib_xcb::xcb_connection_t;
+#[cfg(wayland_platform)]
+use {memmap2::MmapOptions, std::os::unix::io::OwnedFd};
+
 use xkb::XKB_MOD_INVALID;
 use xkbcommon_dl::{
     self as xkb, xkb_keycode_t, xkb_keymap, xkb_keymap_compile_flags, xkb_keysym_t,
     xkb_layout_index_t, xkb_mod_index_t,
 };
-#[cfg(wayland_platform)]
-use {memmap2::MmapOptions, std::os::unix::io::OwnedFd};
 
 use crate::keyboard::{Key, KeyCode, KeyLocation, NamedKey, NativeKey, NativeKeyCode, PhysicalKey};
 #[cfg(x11_platform)]
@@ -34,9 +35,6 @@ pub fn scancode_to_physicalkey(scancode: u32) -> PhysicalKey {
     // libxkbcommon's documentation seems to suggest that the keycode values we're interested in
     // are defined by the Linux kernel. If Winit programs end up being run on other Unix-likes,
     // I can only hope they agree on what the keycodes mean.
-    //
-    // The mapping here is heavily influenced by Firefox' source:
-    // https://searchfox.org/mozilla-central/rev/c597e9c789ad36af84a0370d395be066b7dc94f4/widget/NativeKeyToDOMCodeName.h
     //
     // Some of the keycodes are likely superfluous for our purposes, and some are ones which are
     // difficult to test the correctness of, or discover the purpose of. Because of this, they've
@@ -166,26 +164,26 @@ pub fn scancode_to_physicalkey(scancode: u32) -> PhysicalKey {
         122 => KeyCode::Lang1,
         123 => KeyCode::Lang2,
         124 => KeyCode::IntlYen,
-        125 => KeyCode::MetaLeft,
-        126 => KeyCode::MetaRight,
+        125 => KeyCode::SuperLeft,
+        126 => KeyCode::SuperRight,
         127 => KeyCode::ContextMenu,
-        128 => KeyCode::BrowserStop,
-        129 => KeyCode::Again,
-        130 => KeyCode::Props,
-        131 => KeyCode::Undo,
-        132 => KeyCode::Select, // FRONT
-        133 => KeyCode::Copy,
-        134 => KeyCode::Open,
-        135 => KeyCode::Paste,
-        136 => KeyCode::Find,
-        137 => KeyCode::Cut,
-        138 => KeyCode::Help,
+        // 128 => KeyCode::STOP,
+        // 129 => KeyCode::AGAIN,
+        // 130 => KeyCode::PROPS,
+        // 131 => KeyCode::UNDO,
+        // 132 => KeyCode::FRONT,
+        // 133 => KeyCode::COPY,
+        // 134 => KeyCode::OPEN,
+        // 135 => KeyCode::PASTE,
+        // 136 => KeyCode::FIND,
+        // 137 => KeyCode::CUT,
+        // 138 => KeyCode::HELP,
         // 139 => KeyCode::MENU,
-        140 => KeyCode::LaunchApp2, // CALC
+        // 140 => KeyCode::CALC,
         // 141 => KeyCode::SETUP,
         // 142 => KeyCode::SLEEP,
-        143 => KeyCode::WakeUp,
-        144 => KeyCode::LaunchApp1, // FILE
+        // 143 => KeyCode::WAKEUP,
+        // 144 => KeyCode::FILE,
         // 145 => KeyCode::SENDFILE,
         // 146 => KeyCode::DELETEFILE,
         // 147 => KeyCode::XFER,
@@ -196,13 +194,13 @@ pub fn scancode_to_physicalkey(scancode: u32) -> PhysicalKey {
         // 152 => KeyCode::COFFEE,
         // 153 => KeyCode::ROTATE_DISPLAY,
         // 154 => KeyCode::CYCLEWINDOWS,
-        155 => KeyCode::LaunchMail,
-        156 => KeyCode::BrowserFavorites, // BOOKMARKS
+        // 155 => KeyCode::MAIL,
+        // 156 => KeyCode::BOOKMARKS,
         // 157 => KeyCode::COMPUTER,
-        158 => KeyCode::BrowserBack,
-        159 => KeyCode::BrowserForward,
+        // 158 => KeyCode::BACK,
+        // 159 => KeyCode::FORWARD,
         // 160 => KeyCode::CLOSECD,
-        161 => KeyCode::Eject, // EJECTCD
+        // 161 => KeyCode::EJECTCD,
         // 162 => KeyCode::EJECTCLOSECD,
         163 => KeyCode::MediaTrackNext,
         164 => KeyCode::MediaPlayPause,
@@ -212,9 +210,9 @@ pub fn scancode_to_physicalkey(scancode: u32) -> PhysicalKey {
         // 168 => KeyCode::REWIND,
         // 169 => KeyCode::PHONE,
         // 170 => KeyCode::ISO,
-        171 => KeyCode::MediaSelect, // CONFIG
-        172 => KeyCode::BrowserHome,
-        173 => KeyCode::BrowserRefresh,
+        // 171 => KeyCode::CONFIG,
+        // 172 => KeyCode::HOMEPAGE,
+        // 173 => KeyCode::REFRESH,
         // 174 => KeyCode::EXIT,
         // 175 => KeyCode::MOVE,
         // 176 => KeyCode::EDIT,
@@ -253,7 +251,7 @@ pub fn scancode_to_physicalkey(scancode: u32) -> PhysicalKey {
         // 214 => KeyCode::QUESTION,
         // 215 => KeyCode::EMAIL,
         // 216 => KeyCode::CHAT,
-        217 => KeyCode::BrowserSearch,
+        // 217 => KeyCode::SEARCH,
         // 218 => KeyCode::CONNECT,
         // 219 => KeyCode::FINANCE,
         // 220 => KeyCode::SPORT,
@@ -419,35 +417,13 @@ pub fn physicalkey_to_scancode(key: PhysicalKey) -> Option<u32> {
         KeyCode::Lang1 => Some(122),
         KeyCode::Lang2 => Some(123),
         KeyCode::IntlYen => Some(124),
-        KeyCode::MetaLeft => Some(125),
-        KeyCode::MetaRight => Some(126),
+        KeyCode::SuperLeft => Some(125),
+        KeyCode::SuperRight => Some(126),
         KeyCode::ContextMenu => Some(127),
-        KeyCode::BrowserStop => Some(128),
-        KeyCode::Again => Some(129),
-        KeyCode::Props => Some(130),
-        KeyCode::Undo => Some(131),
-        KeyCode::Select => Some(132),
-        KeyCode::Copy => Some(133),
-        KeyCode::Open => Some(134),
-        KeyCode::Paste => Some(135),
-        KeyCode::Find => Some(136),
-        KeyCode::Cut => Some(137),
-        KeyCode::Help => Some(138),
-        KeyCode::LaunchApp2 => Some(140),
-        KeyCode::WakeUp => Some(143),
-        KeyCode::LaunchApp1 => Some(144),
-        KeyCode::LaunchMail => Some(155),
-        KeyCode::BrowserFavorites => Some(156),
-        KeyCode::BrowserBack => Some(158),
-        KeyCode::BrowserForward => Some(159),
-        KeyCode::Eject => Some(161),
         KeyCode::MediaTrackNext => Some(163),
         KeyCode::MediaPlayPause => Some(164),
         KeyCode::MediaTrackPrevious => Some(165),
         KeyCode::MediaStop => Some(166),
-        KeyCode::MediaSelect => Some(171),
-        KeyCode::BrowserHome => Some(172),
-        KeyCode::BrowserRefresh => Some(173),
         KeyCode::F13 => Some(183),
         KeyCode::F14 => Some(184),
         KeyCode::F15 => Some(185),
@@ -460,7 +436,6 @@ pub fn physicalkey_to_scancode(key: PhysicalKey) -> Option<u32> {
         KeyCode::F22 => Some(192),
         KeyCode::F23 => Some(193),
         KeyCode::F24 => Some(194),
-        KeyCode::BrowserSearch => Some(217),
         _ => None,
     }
 }
@@ -622,19 +597,15 @@ pub fn keysym_to_key(keysym: u32) -> Key {
         keysyms::Control_R => NamedKey::Control,
         keysyms::Caps_Lock => NamedKey::CapsLock,
         // keysyms::Shift_Lock => NamedKey::ShiftLock,
+
+        // keysyms::Meta_L => NamedKey::Meta,
+        // keysyms::Meta_R => NamedKey::Meta,
         keysyms::Alt_L => NamedKey::Alt,
         keysyms::Alt_R => NamedKey::Alt,
-        #[allow(deprecated)]
+        keysyms::Super_L => NamedKey::Super,
+        keysyms::Super_R => NamedKey::Super,
         keysyms::Hyper_L => NamedKey::Hyper,
-        #[allow(deprecated)]
         keysyms::Hyper_R => NamedKey::Hyper,
-
-        // Browsers map X11's Super keys to Meta, so we do that as well.
-        keysyms::Super_L => NamedKey::Meta,
-        keysyms::Super_R => NamedKey::Meta,
-        // The actual Meta keys do not seem to be used by browsers, so we don't do that either.
-        // keysyms::Meta_L => NamedKey::Super,
-        // keysyms::Meta_R => NamedKey::Super,
 
         // XKB function and modifier keys
         // keysyms::ISO_Lock => NamedKey::IsoLock,
@@ -668,7 +639,7 @@ pub fn keysym_to_key(keysym: u32) -> Key {
         // keysyms::ISO_Release_Margin_Left => NamedKey::IsoReleaseMarginLeft,
         // keysyms::ISO_Release_Margin_Right => NamedKey::IsoReleaseMarginRight,
         // keysyms::ISO_Release_Both_Margins => NamedKey::IsoReleaseBothMargins,
-        // keysyms::ISO_Fast_Cursor_Left => NamedKey::IsoFastPointerLeft,
+        // keysyms::ISO_Fast_Cursor_Left => NamedKey::IsoFastCursorLeft,
         // keysyms::ISO_Fast_Cursor_Right => NamedKey::IsoFastCursorRight,
         // keysyms::ISO_Fast_Cursor_Up => NamedKey::IsoFastCursorUp,
         // keysyms::ISO_Fast_Cursor_Down => NamedKey::IsoFastCursorDown,
@@ -728,7 +699,7 @@ pub fn keysym_to_key(keysym: u32) -> Key {
         keysyms::_3270_PrintScreen => NamedKey::PrintScreen,
         keysyms::_3270_Enter => NamedKey::Enter,
 
-        keysyms::space => return Key::Character(" ".into()),
+        keysyms::space => NamedKey::Space,
         // exclam..Sinh_kunddaliya
 
         // XFree86

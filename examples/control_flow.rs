@@ -7,11 +7,12 @@ use std::time;
 use ::tracing::{info, warn};
 #[cfg(web_platform)]
 use web_time as time;
+
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
-use winit::window::{Window, WindowAttributes, WindowId};
+use winit::window::{Window, WindowId};
 
 #[path = "util/fill.rs"]
 mod fill;
@@ -43,20 +44,21 @@ fn main() -> Result<(), impl std::error::Error> {
 
     let event_loop = EventLoop::new().unwrap();
 
-    event_loop.run_app(ControlFlowDemo::default())
+    let mut app = ControlFlowDemo::default();
+    event_loop.run_app(&mut app)
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct ControlFlowDemo {
     mode: Mode,
     request_redraw: bool,
     wait_cancelled: bool,
     close_requested: bool,
-    window: Option<Box<dyn Window>>,
+    window: Option<Window>,
 }
 
 impl ApplicationHandler for ControlFlowDemo {
-    fn new_events(&mut self, _event_loop: &dyn ActiveEventLoop, cause: StartCause) {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
         info!("new_events: {cause:?}");
 
         self.wait_cancelled = match cause {
@@ -65,8 +67,8 @@ impl ApplicationHandler for ControlFlowDemo {
         }
     }
 
-    fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-        let window_attributes = WindowAttributes::default().with_title(
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window_attributes = Window::default_attributes().with_title(
             "Press 1, 2, 3 to change control flow mode. Press R to toggle redraw requests.",
         );
         self.window = Some(event_loop.create_window(window_attributes).unwrap());
@@ -74,7 +76,7 @@ impl ApplicationHandler for ControlFlowDemo {
 
     fn window_event(
         &mut self,
-        _event_loop: &dyn ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         _window_id: WindowId,
         event: WindowEvent,
     ) {
@@ -114,13 +116,13 @@ impl ApplicationHandler for ControlFlowDemo {
             WindowEvent::RedrawRequested => {
                 let window = self.window.as_ref().unwrap();
                 window.pre_present_notify();
-                fill::fill_window(window.as_ref());
+                fill::fill_window(window);
             },
             _ => (),
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.request_redraw && !self.wait_cancelled && !self.close_requested {
             self.window.as_ref().unwrap().request_redraw();
         }
